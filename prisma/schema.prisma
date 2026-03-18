@@ -1,0 +1,424 @@
+// LeadFlow AI Database Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Business (your customer)
+model Business {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  phone     String?
+  website   String?
+  type      BusinessType
+  address   String?
+  city      String?
+  timezone  String   @default("Europe/London")
+  
+  // Settings
+  aiEnabled Boolean  @default(true)
+  aiTone    String   @default("friendly")
+  workingHours Json? // { monday: {start: "09:00", end: "17:00"}, ... }
+  
+  // Integrations
+  twilioSid   String?
+  twilioToken String?
+  whatsappId  String?
+  calendarId  String?
+  stripeId    String?
+  
+  // Subscription
+  plan        Plan     @default(STARTER)
+  status      Status   @default(TRIAL)
+  trialEnds   DateTime?
+  subscriptionEnds DateTime?
+  
+  // Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  leads       Lead[]
+  users       User[]
+  conversations Conversation[]
+  appointments Appointment[]
+  
+  @@index([email])
+  @@index([type])
+}
+
+enum BusinessType {
+  DENTIST
+  MED_SPA
+  ROOFER
+  HVAC
+  LEGAL
+  HOME_SERVICE
+  OTHER
+}
+
+enum Plan {
+  STARTER   // £99/month
+  GROWTH    // £149/month
+  PRO       // £299-399/month
+}
+
+enum Status {
+  TRIAL
+  ACTIVE
+  PAUSED
+  CANCELLED
+}
+
+// User (business owner/staff)
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      Role     @default(OWNER)
+  phone     String?
+  avatar    String?
+  
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([businessId])
+  @@index([email])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+// Lead (potential customer)
+model Lead {
+  id        String   @id @default(cuid())
+  name      String?
+  phone     String?
+  email     String?
+  source    LeadSource
+  service   String?  // What service they want
+  status    LeadStatus @default(NEW)
+  value     Float?   // Estimated deal value
+  notes     String?  @db.Text
+  
+  // Scoring
+  score     Int      @default(0)  // 0-100 lead score
+  priority  Priority @default(MEDIUM)
+  
+  // Metadata
+  ipAddress String?
+  userAgent String?
+  utmSource String?
+  utmMedium String?
+  utmCampaign String?
+  
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  conversations Conversation[]
+  appointments  Appointment[]
+  activities    Activity[]
+  
+  @@index([businessId])
+  @@index([status])
+  @@index([phone])
+  @@index([email])
+  @@index([createdAt])
+}
+
+enum LeadSource {
+  WEBSITE_CHAT
+  SMS
+  WHATSAPP
+  PHONE_CALL
+  FACEBOOK
+  INSTAGRAM
+  GOOGLE
+  OTHER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  BOOKED
+  CLOSED
+  LOST
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// Conversation (chat thread)
+model Conversation {
+  id        String   @id @default(cuid())
+  channel   Channel  @default(WEB)
+  status    ConversationStatus @default(ACTIVE)
+  
+  // AI settings
+  aiEnabled Boolean  @default(true)
+  humanTakeover Boolean @default(false)
+  
+  // Last message
+  lastMessage String? @db.Text
+  lastMessageAt DateTime?
+  
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  
+  leadId    String?
+  lead      Lead? @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  messages    Message[]
+  activities  Activity[]
+  
+  @@index([businessId])
+  @@index([leadId])
+  @@index([status])
+  @@index([lastMessageAt])
+}
+
+enum Channel {
+  WEB
+  SMS
+  WHATSAPP
+  FACEBOOK
+  INSTAGRAM
+}
+
+enum ConversationStatus {
+  ACTIVE
+  PAUSED
+  CLOSED
+  ARCHIVED
+}
+
+// Individual message
+model Message {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  direction Direction
+  type      MessageType @default(TEXT)
+  
+  // AI metadata
+  isAI      Boolean  @default(false)
+  aiModel   String?  // e.g., "gpt-4"
+  aiTokens  Int?
+  aiLatency Int?     // Response time in ms
+  
+  // Delivery
+  status    MessageStatus @default(SENT)
+  deliveredAt DateTime?
+  readAt    DateTime?
+  
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+enum Direction {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  DOCUMENT
+  LOCATION
+  CONTACT
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+// Appointment
+model Appointment {
+  id        String   @id @default(cuid())
+  title     String
+  startTime DateTime
+  endTime   DateTime
+  status    AppointmentStatus @default(SCHEDULED)
+  notes     String? @db.Text
+  location  String?
+  
+  // Booking source
+  bookedVia Channel
+  bookedBy  String?  // AI or user name
+  
+  // Reminders
+  reminderSent Boolean @default(false)
+  reminderSentAt DateTime?
+  
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  
+  leadId    String?
+  lead      Lead? @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([businessId])
+  @@index([leadId])
+  @@index([startTime])
+  @@index([status])
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  RESCHEDULED
+}
+
+// Activity (audit log + timeline)
+model Activity {
+  id        String   @id @default(cuid())
+  type      ActivityType
+  content   String   @db.Text
+  metadata  Json?
+  
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  
+  leadId    String?
+  lead      Lead? @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  userId    String?
+  user      User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@index([businessId])
+  @@index([leadId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+enum ActivityType {
+  LEAD_CREATED
+  LEAD_UPDATED
+  MESSAGE_SENT
+  MESSAGE_RECEIVED
+  APPOINTMENT_BOOKED
+  APPOINTMENT_REMINDER
+  FOLLOW_UP_SENT
+  STATUS_CHANGED
+  AI_RESPONSE
+  HUMAN_TAKEOVER
+  INTEGRATION_CONNECTED
+  SUBSCRIPTION_CHANGED
+}
+
+// Follow-up sequence
+model FollowUpSequence {
+  id        String   @id @default(cuid())
+  name      String
+  trigger   TriggerType
+  delay     Int      // Minutes to wait
+  message   String   @db.Text
+  channel   Channel
+  active    Boolean  @default(true)
+  
+  // Conditions
+  minScore  Int?     // Minimum lead score
+  maxScore  Int?     // Maximum lead score
+  statuses  LeadStatus[] // Only for these statuses
+  
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([businessId])
+  @@index([trigger])
+}
+
+enum TriggerType {
+  NO_RESPONSE      // Lead hasn't responded
+  QUOTE_SENT       // After sending quote
+  APPOINTMENT_BOOKED // After booking
+  APPOINTMENT_REMINDER // Before appointment
+  MISSED_CALL      // After missed call
+  CUSTOM           // Custom trigger
+}
+
+// Analytics (daily aggregates)
+model Analytics {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  uniqueIndex String @unique // businessId + date
+  
+  // Leads
+  leadsCaptured Int @default(0)
+  leadsContacted Int @default(0)
+  leadsQualified Int @default(0)
+  leadsBooked Int @default(0)
+  leadsClosed Int @default(0)
+  
+  // Response times
+  avgResponseTime Int @default(0) // Seconds
+  medianResponseTime Int @default(0)
+  
+  // Messages
+  messagesSent Int @default(0)
+  messagesReceived Int @default(0)
+  aiMessages Int @default(0)
+  humanMessages Int @default(0)
+  
+  // Appointments
+  appointmentsBooked Int @default(0)
+  appointmentsCompleted Int @default(0)
+  appointmentsNoShow Int @default(0)
+  
+  // Revenue
+  revenueInfluenced Float @default(0)
+  
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([businessId])
+  @@index([date])
+}
