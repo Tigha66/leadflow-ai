@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "name": "leadflow-ai",
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/src/app/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/src/app/$1"
+    }
+  ],
+  "env": {
+    "DATABASE_URL": "@database-url",
+    "OPENAI_API_KEY": "@openai-api-key",
+    "TWILIO_ACCOUNT_SID": "@twilio-sid",
+    "TWILIO_AUTH_TOKEN": "@twilio-token",
+    "STRIPE_SECRET_KEY": "@stripe-secret",
+    "GOOGLE_CALENDAR_CLIENT_ID": "@google-client-id",
+    "GOOGLE_CALENDAR_CLIENT_SECRET": "@google-client-secret",
+    "NEXT_PUBLIC_APP_NAME": "LeadFlow AI"
+  }
+}
