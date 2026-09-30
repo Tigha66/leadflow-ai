@@ -1,4 +1,4 @@
-import { dateKey, minutesOf, zonedParts } from "@/lib/time";
+import { addDaysToKey, dateKey, minutesOf, weekdayOfKey, zonedParts, zonedTimeToUtc } from "@/lib/time";
 
 export interface BusinessHoursInput {
   dayOfWeek: number;
@@ -40,4 +40,20 @@ export function isOpenAt(date: Date, tz: string, hours: BusinessHoursInput[], ho
   if (!window) return false;
   const m = p.hour * 60 + p.minute;
   return m >= window.open && m < window.close;
+}
+
+/** Next time the office opens (used for next-morning callback tasks). */
+export function nextOpening(now: Date, tz: string, hours: BusinessHoursInput[], holidays: HolidayInput[] = []): Date {
+  if (isOpenAt(now, tz, hours, holidays)) return now;
+  const today = dateKey(now, tz);
+  for (let i = 0; i < 14; i++) {
+    const key = addDaysToKey(today, i);
+    const window = hoursForDate(key, weekdayOfKey(key), hours, holidays);
+    if (!window) continue;
+    const hh = String(Math.floor(window.open / 60)).padStart(2, "0");
+    const mm = String(window.open % 60).padStart(2, "0");
+    const at = zonedTimeToUtc(key, `${hh}:${mm}`, tz);
+    if (at > now) return at;
+  }
+  return new Date(now.getTime() + 12 * 3_600_000);
 }

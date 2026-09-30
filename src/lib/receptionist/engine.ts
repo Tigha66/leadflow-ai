@@ -437,7 +437,7 @@ async function advance(state: ConversationState, text: string, ctx: Receptionist
         const yn = parseYesNo(text);
         if (yn === "yes" && offered.length) return bookSlot(state, ctx, actions, offered[0]);
         state.misunderstandings += 1;
-        if (state.misunderstandings >= 3) return endWithCallback(state, ctx, actions, "Let me have our dispatcher call you to find a time that works.");
+        if (state.misunderstandings >= 3) return endWithCallback(state, ctx, actions, "Let me have our dispatcher call you to find a time that works.").reply;
         return `Which works better: ${offered.map((o, i) => `${["the first", "the second", "the third"][i]}, ${o.label}`).join("; ")}?`;
       }
       return bookSlot(state, ctx, actions, offered[idx]);
